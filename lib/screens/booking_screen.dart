@@ -8,12 +8,14 @@ class BookingPage extends StatefulWidget {
   final int idGedung;
   final String namaGedung;
   final double hargaPerJam;
+  final String userName; // ✅ 1. Terima Data Nama User
 
   const BookingPage({
     super.key,
     required this.idGedung,
     required this.namaGedung,
     required this.hargaPerJam,
+    required this.userName, // ✅ Wajib diisi dari halaman sebelumnya
   });
 
   @override
@@ -21,20 +23,19 @@ class BookingPage extends StatefulWidget {
 }
 
 class _BookingPageState extends State<BookingPage> {
-  final _nameController = TextEditingController();
+  // ❌ Hapus _nameController, tidak butuh lagi
+
   int _selectedDuration = 1;
   bool _isLoading = false;
 
-  // Variabel untuk menyimpan input tanggal dan waktu manual
   DateTime _selectedDate = DateTime.now();
   TimeOfDay _selectedTime = TimeOfDay.now();
 
-  // Fungsi memunculkan Date Picker (Tanggal lewat dinonaktifkan via firstDate)
   Future<void> _pickDate() async {
     DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime.now(), // Tanggal sebelum hari ini dinonaktifkan
+      firstDate: DateTime.now(),
       lastDate: DateTime(2030),
     );
     if (picked != null && picked != _selectedDate) {
@@ -42,7 +43,6 @@ class _BookingPageState extends State<BookingPage> {
     }
   }
 
-  // Fungsi memunculkan Time Picker
   Future<void> _pickTime() async {
     TimeOfDay? picked = await showTimePicker(
       context: context,
@@ -54,12 +54,7 @@ class _BookingPageState extends State<BookingPage> {
   }
 
   Future<void> _submitBooking() async {
-    if (_nameController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Nama pemesan tidak boleh kosong!")),
-      );
-      return;
-    }
+    // ❌ Tidak perlu validasi nama kosong, karena ambil dari akun
 
     setState(() => _isLoading = true);
 
@@ -67,7 +62,6 @@ class _BookingPageState extends State<BookingPage> {
       final int priceInt = widget.hargaPerJam.toInt();
       final String url = "http://10.0.2.2:8002/api/bookings?pricePerHour=$priceInt";
 
-      // MENGGABUNGKAN tanggal dan waktu yang dipilih user
       DateTime finalDateTime = DateTime(
         _selectedDate.year,
         _selectedDate.month,
@@ -76,12 +70,11 @@ class _BookingPageState extends State<BookingPage> {
         _selectedTime.minute,
       );
 
-      // FORMAT TANGGAL: YYYY-MM-DDTHH:mm:ss
       String formattedDate = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(finalDateTime);
 
       final Map<String, dynamic> requestBody = {
         "gedungId": widget.idGedung,
-        "customerName": _nameController.text,
+        "customerName": widget.userName, // ✅ 2. Pakai nama dari Login
         "bookingDate": formattedDate,
         "durationHours": _selectedDuration,
         "totalPrice": (widget.hargaPerJam * _selectedDuration).toInt(),
@@ -154,10 +147,18 @@ class _BookingPageState extends State<BookingPage> {
             Text("Gedung ID: ${widget.idGedung}", style: const TextStyle(color: Colors.grey)),
             const Divider(height: 40),
 
-            const Text("Nama Lengkap Pemesan", style: TextStyle(fontWeight: FontWeight.bold)),
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(hintText: "Contoh: Awa"),
+            const Text("Nama Pemesan", style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            // ✅ 3. Tampilkan Nama User (Read Only / Tidak bisa diedit)
+            TextFormField(
+              initialValue: widget.userName, // Tampilkan nama login
+              readOnly: true, // Tidak bisa diketik
+              decoration: InputDecoration(
+                border: const OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.grey.shade100, // Warna abu-abu menandakan disabled
+                prefixIcon: const Icon(Icons.person),
+              ),
             ),
             const SizedBox(height: 25),
 

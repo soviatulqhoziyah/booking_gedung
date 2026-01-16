@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // Wajib Import
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/venue_model.dart';
 import '../services/venue_service.dart';
 import 'detail_screen.dart';
 import 'form_screen.dart';
-import 'login_screen.dart'; // Sesuaikan jika ada logout
+import 'login_screen.dart';
+import 'history_screen.dart';       // File user history
+import 'admin_booking_screen.dart'; // ✅ File admin history
+import 'profile_screen.dart';       // ✅ File profil & logout
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,39 +21,29 @@ class _HomeScreenState extends State<HomeScreen> {
   final VenueService _apiService = VenueService();
   late Future<List<Venue>> _venuesFuture;
 
-  // ✅ UBAH JADI STRING (Karena ID MongoDB itu String)
+  // Data User
   String _loggedInUserId = "";
+  String _loggedInUserName = "";
+  String _loggedInUserRole = "user";
 
-  // URL Gambar Gedung (Port 8001)
+  // State Navigasi Bawah
+  int _selectedIndex = 0;
   final String _imageBaseUrl = "http://10.0.2.2:8001/uploads/";
 
   @override
   void initState() {
     super.initState();
-    _loadUserData(); // Ambil ID User
+    _loadUserData();
     _refreshData();
   }
 
-  // --- 1. AMBIL ID USER (STRING) ---
   Future<void> _loadUserData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     setState(() {
-      // Gunakan getString karena LoginScreen menyimpannya sebagai String
       _loggedInUserId = prefs.getString('userId') ?? "";
+      _loggedInUserName = prefs.getString('userName') ?? "User";
+      _loggedInUserRole = prefs.getString('userRole') ?? "user";
     });
-    print("User Login ID: $_loggedInUserId");
-  }
-
-  // Fungsi Logout
-  Future<void> _logout() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
-    if (mounted) {
-      Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const LoginScreen())
-      );
-    }
   }
 
   Future<void> _refreshData() async {
@@ -59,46 +52,22 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
+
   String formatRupiah(int price) {
     return NumberFormat.currency(locale: 'id', symbol: 'Rp ', decimalDigits: 0).format(price);
   }
 
-  // Helper Gambar
-  Widget _buildVenueImage(List<String> images) {
-    if (images.isEmpty) {
-      return Container(color: Colors.grey.shade300, child: const Icon(Icons.image_not_supported, size: 50, color: Colors.grey));
-    }
-    String firstImage = images.first;
-    String finalUrl = firstImage.startsWith('http') ? firstImage : "$_imageBaseUrl$firstImage";
-
-    return Image.network(
-      finalUrl,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      errorBuilder: (context, error, stackTrace) => Container(color: Colors.grey.shade200, child: const Icon(Icons.broken_image)),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  // --- WIDGET LIST GEDUNG (Tab Home) ---
+  Widget _buildVenueList() {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Daftar Gedung'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-            tooltip: "Logout",
-          )
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push(context, MaterialPageRoute(builder: (context) => const FormScreen()));
-          _refreshData();
-        },
-        label: const Text("Tambah Gedung"),
-        icon: const Icon(Icons.add),
+        automaticallyImplyLeading: false, // Hilangkan back button
       ),
       body: RefreshIndicator(
         onRefresh: _refreshData,
@@ -122,17 +91,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(16),
                     onTap: () async {
-                      // Kirim ID String ke Detail
-                      await Navigator.push(
+                      final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => DetailScreen(
                             venue: venue,
-                            currentUserId: _loggedInUserId, // ✅ Kirim String
+                            currentUserId: _loggedInUserId,
+                            currentUserName: _loggedInUserName,
+                            userRole: _loggedInUserRole,
                           ),
                         ),
                       );
-                      _refreshData();
+                      if (result == true) _refreshData();
                     },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -142,7 +112,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           width: double.infinity,
                           child: ClipRRect(
                             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                            child: _buildVenueImage(venue.images),
+                            child: venue.images.isNotEmpty
+                                ? Image.network(
+                              venue.images.first.startsWith('http')
+                                  ? venue.images.first
+                                  : "$_imageBaseUrl${venue.images.first}",
+                              fit: BoxFit.cover,
+                              errorBuilder: (ctx, err, _) => Container(color: Colors.grey.shade200, child: const Icon(Icons.broken_image)),
+                            )
+                                : Container(color: Colors.grey.shade200, child: const Icon(Icons.image_not_supported)),
                           ),
                         ),
                         Padding(
@@ -164,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text("${formatRupiah(venue.pricePerHour)} / jam", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16)),
-                                  Text("Kapasitas: ${venue.capacity}", style: const TextStyle(fontSize: 12, color: Colors.blue)),
+                                  Text("Kap: ${venue.capacity}", style: const TextStyle(fontSize: 12, color: Colors.blue)),
                                 ],
                               ),
                             ],
@@ -178,6 +156,76 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           },
         ),
+      ),
+      // ✅ TOMBOL TAMBAH (Hanya Muncul Jika Admin)
+      floatingActionButton: (_loggedInUserRole == 'admin')
+          ? FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.push(context, MaterialPageRoute(builder: (context) => const FormScreen()));
+          _refreshData();
+        },
+        label: const Text("Tambah"),
+        icon: const Icon(Icons.add),
+      )
+          : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // --- 1. TENTUKAN MENU BERDASARKAN ROLE ---
+    List<Widget> bodyContent;
+    List<BottomNavigationBarItem> navItems;
+
+    if (_loggedInUserRole == 'admin') {
+      // === LAYOUT ADMIN ===
+      bodyContent = [
+        _buildVenueList(),           // Index 0: Home (Ada Tombol Tambah)
+        const AdminBookingScreen(),  // Index 1: Booking Masuk (File Baru)
+        ProfileScreen(               // Index 2: Profil & Logout
+          userId: _loggedInUserId,
+          userName: _loggedInUserName,
+          userRole: _loggedInUserRole,
+        ),
+      ];
+
+      navItems = const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.assignment), label: 'Pesanan'), // Icon beda
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+      ];
+
+    } else {
+      // === LAYOUT USER BIASA ===
+      bodyContent = [
+        _buildVenueList(),           // Index 0: Home (Tanpa Tombol Tambah)
+        HistoryScreen(userName: _loggedInUserName), // Index 1: History Saya
+        ProfileScreen(               // Index 2: Profil & Logout
+          userId: _loggedInUserId,
+          userName: _loggedInUserName,
+          userRole: _loggedInUserRole,
+        ),
+      ];
+
+      navItems = const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.history), label: 'Riwayat'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profil'),
+      ];
+    }
+
+    return Scaffold(
+      // Body berubah sesuai Tab yang dipilih
+      body: bodyContent.elementAt(_selectedIndex),
+
+      // Navbar Bawah (Selalu muncul untuk Admin & User, tapi isinya beda)
+      bottomNavigationBar: BottomNavigationBar(
+        items: navItems,
+        currentIndex: _selectedIndex,
+        selectedItemColor: Colors.teal,
+        unselectedItemColor: Colors.grey,
+        onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed, // Biar icon gak goyang kalau > 3
       ),
     );
   }

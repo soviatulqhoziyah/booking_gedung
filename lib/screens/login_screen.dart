@@ -38,40 +38,39 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
 
+      // --- CEK STATUS BERHASIL ---
       if (result['statusCode'] == 200) {
         print("✅ Login Berhasil! Menyimpan sesi...");
 
         SharedPreferences prefs = await SharedPreferences.getInstance();
-        final rawData = result['data'];
+
+        // Cek struktur response (bisa 'user' atau 'data' tergantung backend)
+        final dynamic rawData = result['user'] ?? result['data'];
 
         String userId = "";
         String userName = "User";
+        String userRole = "user"; // Default role
 
-        // --- PERBAIKAN LOGIC (LEBIH AMAN) ---
-        if (rawData is Map) {
-          // Kita pakai 'dynamic' biar tidak merah
-          dynamic userObj;
+        if (rawData != null && rawData is Map) {
+          // Ambil ID (String)
+          userId = (rawData['_id'] ?? rawData['id'] ?? "").toString();
 
-          if (rawData.containsKey('user')) {
-            userObj = rawData['user'];
-          } else {
-            userObj = rawData;
-          }
+          // Ambil Nama
+          userName = (rawData['username'] ?? rawData['name'] ?? "User").toString();
 
-          // Ambil data dengan aman (cek null)
-          if (userObj is Map) {
-            userId = (userObj['_id'] ?? userObj['id'] ?? "").toString();
-            userName = (userObj['username'] ?? userObj['name'] ?? "User").toString();
-          }
+          // ✅ AMBIL ROLE (PENTING UNTUK TOMBOL EDIT/HAPUS)
+          userRole = (rawData['role'] ?? "user").toString();
         }
 
-        // Simpan
+        // --- SIMPAN KE MEMORI HP ---
         await prefs.setString('userId', userId);
-        await prefs.setString('userName', userName);
+        await prefs.setString('userName', userName); // Konsisten pakai 'userName'
+        await prefs.setString('userRole', userRole); // ✅ SIMPAN ROLE
         await prefs.setBool('isLogin', true);
 
-        print("💾 Berhasil simpan: ID=$userId, Nama=$userName");
+        print("💾 Berhasil simpan: ID=$userId, Nama=$userName, Role=$userRole");
 
+        // Tunggu sebentar
         await Future.delayed(const Duration(seconds: 1));
 
         if (mounted) {

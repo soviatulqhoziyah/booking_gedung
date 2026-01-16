@@ -40,6 +40,30 @@ class UserService {
     }
   }
 
+  // Di dalam class UserService
+  Future<Map<String, dynamic>> getUserProfile(String id) async {
+    try {
+      final url = Uri.parse("http://10.0.2.2:3001/api/auth/$id");
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final decodedData = jsonDecode(response.body);
+
+        // Cetak di console untuk debug (Hapus jika sudah jalan)
+        print("Response User Service: $decodedData");
+
+        // Cek apakah data dibungkus dalam field 'data' (standar banyak API)
+        if (decodedData is Map && decodedData.containsKey('data')) {
+          return decodedData['data'];
+        }
+        return decodedData;
+      }
+    } catch (e) {
+      print("Gagal ambil profil: $e");
+    }
+    return {};
+  }
+
   // 👇👇👇 PERBAIKAN DI SINI: UBAH 'int' JADI 'String' 👇👇👇
   Future<String> getUserName(String id) async { // ✅ String, bukan int
     try {

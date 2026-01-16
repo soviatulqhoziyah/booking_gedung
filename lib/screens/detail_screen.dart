@@ -4,21 +4,24 @@ import 'package:intl/intl.dart';
 // IMPORT MODELS & SERVICES
 import '../models/ModelReview.dart';
 import '../models/venue_model.dart';
-import '../services/user_service.dart';
 import '../services/venue_service.dart';
 import '../services/review_service.dart';
 
-import 'form_screen.dart';
+import 'screen_edit_venue.dart'; // ✅ Pastikan ini diimport
 import 'booking_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   final Venue venue;
-  final String currentUserId; // ✅ ID User tipe String
+  final String currentUserId;
+  final String currentUserName;
+  final String userRole; // ✅ Data Role Wajib Ada
 
   const DetailScreen({
     super.key,
     required this.venue,
-    required this.currentUserId
+    required this.currentUserId,
+    required this.currentUserName,
+    required this.userRole, // ✅ Terima data Role
   });
 
   @override
@@ -28,7 +31,6 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> {
   final VenueService _venueService = VenueService();
   final ReviewService _reviewService = ReviewService();
-  final UserService _userService = UserService(); // Untuk ambil nama
 
   late Future<List<ModelReview>> _reviewsFuture;
   final String _imageBaseUrl = "http://10.0.2.2:8001/uploads/";
@@ -49,10 +51,9 @@ class _DetailScreenState extends State<DetailScreen> {
     return NumberFormat.currency(locale: 'id', symbol: 'Rp ', decimalDigits: 0).format(price);
   }
 
-  // --- LOGIKA GAMBAR HEADER ---
+  // --- BUILDER GAMBAR HEADER ---
   Widget _buildHeaderImage() {
     if (widget.venue.images.isEmpty) return Container(color: Colors.teal);
-
     String imageName = widget.venue.images.first;
     String finalUrl = imageName.startsWith('http') ? imageName : "$_imageBaseUrl$imageName";
 
@@ -66,13 +67,13 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
-  // --- HAPUS GEDUNG ---
-  Future<void> _deleteVenue(BuildContext context) async {
+  // --- FUNGSI HAPUS GEDUNG (KHUSUS ADMIN) ---
+  Future<void> _deleteVenue() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text("Hapus Gedung?"),
-        content: const Text("Data ini akan dihapus permanen."),
+        content: const Text("Data ini akan dihapus permanen dan tidak bisa dikembalikan."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Batal")),
           ElevatedButton(
@@ -85,18 +86,48 @@ class _DetailScreenState extends State<DetailScreen> {
     );
 
     if (confirm == true) {
+      if (mounted) {
+        showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (ctx) => const Center(child: CircularProgressIndicator())
+        );
+      }
+
       final success = await _venueService.deleteVenue(widget.venue.id!);
-      if (success && context.mounted) {
-        Navigator.pop(context);
+
+      if (mounted) Navigator.pop(context); // Tutup loading
+
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Gedung berhasil dihapus!"), backgroundColor: Colors.red)
+        );
+        Navigator.pop(context, true); // Kembali ke Home & Refresh
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Gagal menghapus gedung."), backgroundColor: Colors.black)
+        );
       }
     }
   }
 
-  // --- POPUP REVIEW ---
+  // --- FUNGSI PINDAH KE EDIT (KHUSUS ADMIN) ---
+  void _navigateToEdit() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ScreenEditVenue(venue: widget.venue)),
+    );
+
+    // Jika berhasil diedit (result == true), kembali ke Home biar data refresh
+    if (result == true && mounted) {
+      Navigator.pop(context, true);
+    }
+  }
+
+  // --- POPUP TAMBAH REVIEW ---
   void _showAddReviewDialog() {
     final commentController = TextEditingController();
     int selectedRating = 5;
-
     showDialog(
       context: context,
       builder: (ctx) {
@@ -131,17 +162,36 @@ class _DetailScreenState extends State<DetailScreen> {
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
                   onPressed: () async {
-                    Navigator.pop(context);
-                    // Post Review dengan ID String
-                    bool success = await _reviewService.postReview(
-                      widget.venue.id!,
-                      widget.currentUserId, // String ID
-                      selectedRating,
-                      commentController.text,
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(child: CircularProgressIndicator()),
                     );
-                    if (success) {
-                      _refreshReviews();
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ulasan terkirim!"), backgroundColor: Colors.green));
+
+                    try {
+                      bool success = await _reviewService.postReview(
+                        widget.venue.id!,
+                        widget.currentUserName, // Kirim Nama User
+                        selectedRating,
+                        commentController.text,
+                      );
+
+                      if (context.mounted) {
+                        Navigator.pop(context); // Tutup loading
+                        Navigator.pop(context); // Tutup dialog review
+                      }
+
+                      if (success) {
+                        _refreshReviews();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Ulasan terkirim!"), backgroundColor: Colors.green)
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (context.mounted) Navigator.pop(context);
+                      print("Error: $e");
                     }
                   },
                   child: const Text("Kirim"),
@@ -172,11 +222,24 @@ class _DetailScreenState extends State<DetailScreen> {
                 ],
               ),
             ),
+
+            // ✅ LOGIKA TOMBOL HANYA UNTUK ADMIN
             actions: [
-              IconButton(icon: const Icon(Icons.edit, color: Colors.white), onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => FormScreen(venue: widget.venue)))),
-              IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () => _deleteVenue(context)),
+              if (widget.userRole == 'admin') ...[
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.white),
+                  onPressed: _navigateToEdit,
+                  tooltip: "Edit Gedung",
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete, color: Colors.redAccent),
+                  onPressed: _deleteVenue,
+                  tooltip: "Hapus Gedung",
+                ),
+              ]
             ],
           ),
+
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16.0),
@@ -187,9 +250,6 @@ class _DetailScreenState extends State<DetailScreen> {
                     Text(formatRupiah(widget.venue.pricePerHour), style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.teal, fontWeight: FontWeight.bold)),
                     Chip(label: Text("${widget.venue.capacity} Orang"), avatar: const Icon(Icons.people)),
                   ]),
-                  const SizedBox(height: 16),
-                  const Row(children: [Icon(Icons.location_on, color: Colors.grey), SizedBox(width: 8), Text("Lokasi", style: TextStyle(fontWeight: FontWeight.bold))]),
-                  Text(widget.venue.location, style: const TextStyle(fontSize: 16)),
                   const SizedBox(height: 24),
                   const Text("Deskripsi", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
@@ -205,7 +265,6 @@ class _DetailScreenState extends State<DetailScreen> {
             ),
           ),
 
-          // --- LIST REVIEW ---
           FutureBuilder<List<ModelReview>>(
             future: _reviewsFuture,
             builder: (context, snapshot) {
@@ -227,15 +286,12 @@ class _DetailScreenState extends State<DetailScreen> {
                           title: Row(children: List.generate(5, (i) => Icon(i < review.rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 16))),
                           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             const SizedBox(height: 6), Text(review.comment), const SizedBox(height: 8),
-                            // FETCH USERNAME
-                            FutureBuilder<String>(
-                                future: _userService.getUserName(review.userId), // Kirim String ID
-                                builder: (context, userSnapshot) {
-                                  String name = userSnapshot.data ?? "User #${review.userId.substring(0,4)}...";
-                                  if (userSnapshot.connectionState == ConnectionState.waiting) name = "...";
-                                  return Row(children: [const Icon(Icons.person, size: 14, color: Colors.grey), const SizedBox(width: 4), Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal))]);
-                                }
-                            )
+                            Row(children: [
+                              const Icon(Icons.person, size: 14, color: Colors.grey), const SizedBox(width: 4),
+                              Text(review.userName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.teal)),
+                              const SizedBox(width: 10),
+                              Text(DateFormat('dd MMM yyyy').format(review.createdAt), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                            ]),
                           ]),
                         ),
                       ),
@@ -254,7 +310,21 @@ class _DetailScreenState extends State<DetailScreen> {
         decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))]),
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => BookingPage(idGedung: widget.venue.id!, namaGedung: widget.venue.name, hargaPerJam: widget.venue.pricePerHour.toDouble()))),
+          // Di dalam detail_screen.dart
+
+          onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => BookingPage(
+                    idGedung: widget.venue.id!,
+                    namaGedung: widget.venue.name,
+                    hargaPerJam: widget.venue.pricePerHour.toDouble(),
+
+                    // 👇 TAMBAHKAN INI 👇
+                    userName: widget.currentUserName,
+                  )
+              )
+          ),
           child: const Text("BOOKING SEKARANG", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ),
       ),

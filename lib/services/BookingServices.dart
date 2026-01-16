@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/ModelBooking.dart';
 
@@ -55,6 +56,90 @@ class BookingService {
     } catch (e) {
       print("Network Error: $e");
       return null;
+    }
+  }
+
+  Future<List<BookingModel>> getHistory(String name) async {
+    try {
+      // Endpoint sesuai Controller Spring Boot tadi: /user/{name}
+      final response = await http.get(Uri.parse('$baseUrl/user/$name'));
+
+      print("Request ke: $baseUrl/user/$name");
+      print("Status: ${response.statusCode}");
+      print("Response: ${response.body}");
+
+      if (response.statusCode == 200) {
+        return bookingModelFromJson(response.body);
+      } else {
+        return []; // Jika kosong atau error
+      }
+    } catch (e) {
+      print("Error Fetch History: $e");
+      return [];
+    }
+  }
+
+  Future<bool> uploadPaymentProof(int bookingId, File imageFile) async {
+    try {
+      // Endpoint: POST /api/bookings/{id}/upload
+      var request = http.MultipartRequest(
+          'POST', Uri.parse('$baseUrl/$bookingId/upload')
+      );
+
+      // Masukkan file ke request
+      request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+
+      // Kirim
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print("Upload Status: ${response.statusCode}");
+      print("Upload Response: ${response.body}");
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error Upload: $e");
+      return false;
+    }
+  }
+  // ✅ FUNGSI BARU: Ambil SEMUA Booking (Khusus Admin)
+  Future<List<BookingModel>> getAllBookings() async {
+    try {
+      // Endpoint: GET /api/bookings
+      final response = await http.get(Uri.parse(baseUrl));
+
+      print("Admin Fetch All: $baseUrl");
+      print("Response: ${response.body}");
+
+      if (response.statusCode == 200) {
+        return bookingModelFromJson(response.body);
+      } else {
+        return [];
+      }
+    } catch (e) {
+      print("Error Admin Fetch: $e");
+      return [];
+    }
+  }
+
+  Future<bool> updateBookingStatus(int id, String newStatus) async {
+    try {
+      // Kita gunakan query parameter (?status=...) sesuai backend
+      final uri = Uri.parse('$baseUrl/$id').replace(queryParameters: {
+        'status': newStatus,
+      });
+
+      print("Hit Update: $uri");
+
+      final response = await http.put(uri);
+
+      print("Status Code: ${response.statusCode}");
+      print("Response: ${response.body}");
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Error Update Status: $e");
+      return false;
     }
   }
 }

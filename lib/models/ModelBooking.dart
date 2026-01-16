@@ -1,4 +1,6 @@
 import 'dart:convert';
+List<BookingModel> bookingModelFromJson(String str) =>
+    List<BookingModel>.from(json.decode(str).map((x) => BookingModel.fromJson(x)));
 
 class BookingModel {
   final int id;
